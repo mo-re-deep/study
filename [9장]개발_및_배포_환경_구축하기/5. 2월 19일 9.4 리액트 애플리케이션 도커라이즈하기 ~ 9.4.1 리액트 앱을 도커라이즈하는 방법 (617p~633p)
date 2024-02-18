@@ -1,1 +1,197 @@
 
+# 9.4 리액트 애플리케이션 도커라이즈하기
+
+과거: 웹 애플리케이션 배포를 위해 직접 장비를 준비하고, 각종 파일을 설치하고, 소스를 다운하고 설치.
+
+현재: 애플리케이션을 하나의 컨테이너로 만들어서 빠르게 배포.
+
+이때, 컨테이너를 만드는데 사용되는 것이 “도커(Docker)”이다.
+
+도커는 서비스 운영에 필요한 애플리케이션을 격리해 컨테이너로 만드는데 이용하는 소프트웨어이다.
+
+## 9.4.1 리액트 앱을 도커라이즈하는 방법
+
+도커라이즈: 애플리케이션을 도커 이미지로 만드는 과정. 또는 빠르게 구축해 배포할 수 있는 상태로 준비하는 것.
+
+### 도커란?
+
+> 도커는 개발자가 모던 애플리케이션을 구축, 공유, 실행하는 것을 도와줄 수 있도록 설계된 플랫폼이다. 도커는 지루한 설정 과정을 대신해 주므로 코드를 작성하는 일에만 집중할 수 있다.
+> 
+
+(여기서 지루한 설정 과정이란, 서버와 애플리케이션에 적절한 리소스를 확보하고, 운영체제를 설치하고, Node.js도 설치하고 빌드하는 등의 것들.)
+
+도커는 애플리케이션을 ‘컨테이너’라는 단위로 패키징하고, 이 ‘컨테이너’ 내부에서 애플리케이션이 실행될 수 있도록 도와준다. 도커는 이 ’컨테이너’를 바탕으로 독립된 환경에서 애플리케이션이 항상 일관되게 실행할 수 있도록 보장해준다.
+
+**도커 용어**
+
+- 이미지: 컨테이너를 만드는 데 사용되는 템플릿. Dockerfile을 빌드하면 이미지를 만들 수 있다.
+- 컨테이너: 도커의 이미지를 실행한 상태. 독립된 공간.
+- Dockerfile: 어떤 이미지 파일을 만들지 정의하는 파일. 이 파일을 빌드하면 이미지를 만들 수 있다.
+- 태그: 이미지를 식별할 수 있는 레이블 값을 의미한다.
+- 리포지터리: 이미지를 모아두는 저장소.
+- 레지스트리: 리포지터리에 접근할 수 있게 해주는 서비스. 대표적으로 도커 허브가 있다.
+
+**자주 쓰는 도커 cli 명령어**
+
+- docker build: Dockerfile을 기준으로 이미지 빌드
+- docker push: 이미지나 리포지터리를 도커 레지스트리에 업로드하는 과정
+- docker tag: 이미지에 태그를 생성하는 명령어
+- docker inspect {이미지명 | 컨테이너명}: 이미지나 컨테이너의 세부 정보를 출력하는 명령어
+- docker run: 이미지를 기반으로 새로운 컨테이너를 생성하는 명령어
+- docker ps: 현재 가동 중인 컨테이너 목록을 확인할 수 있는 명령어
+- docker rm {이미지명}: 컨테이너를 삭제한다.
+
+→ 도커 데스크톱의 GUI에서 대부분 제공하는 기능으로, 로컬에서 직접 쓸 일이 많지 않음.
+
+<aside>
+💡 도커 홈페이지에서 도커 설치 후 `docker —version`으로 확인.
+
+</aside>
+
+![Docker desktop의 실행 화면 (예시)](https://prod-files-secure.s3.us-west-2.amazonaws.com/86439edb-1a61-4cf7-826a-0b7e9b701367/649e5404-a4ab-4db9-ad35-c2312fb9b429/Untitled.png)
+
+Docker desktop의 실행 화면 (예시)
+
+### create-react-app을 위한 Dockerfile 작성하기
+
+도커 이미지에서 해야할 작업.
+
+1. 운영체제 설정
+2. Node.js 설치
+3. npm ci
+4. npm run build
+5. 실행
+
+→ 위의 과정을 Dockerfile에 기재하면 되는데, 프로젝트 루트에 Dockerfile이란 이름의 파일을 생성하고 다음과 같이 작성한다.
+
+```powershell
+FROM node:18.23.0-alpine3.16 as build
+
+WORKDIR /app
+
+COPY package.json ./package.json
+COPY package-lock.json ./package-lock.json
+
+RUN npm ci
+
+COPY . ./
+
+RUN npm run build
+```
+
+1. FROM node:18.23.0-alpine3.16 as build: FROM은 이미지가 어떤 베이스 이미지에서 실행될지 결정한다. (베이스 이미지란 이미지를 실행하는 데 필요한 이미지.) 도커 이미지 저장소에서 node:18.23.0-alpine3.16이란 이미지를 사용하겠다는 뜻이다. 이 한 줄로 원하는 운영체제를 바로 사용할 수 있다.
+2. WORKDIR /app: WORKDIR을 수행하는 기본 디렉터리.
+3. COPY: 파일 복사 명령어.
+4. RUN npm ci: RUN을 실행하면  컨테이너에서 명령어를 실행할 수 있다.
+5. COPY .  ./: 모든 리소스 복사.
+6. RUN npm run build: 빌드 명령어를 통해 애플리케이션 빌드.
+
+도커 이미지 빌드 명령어: `docker build . -t cra:test`
+
+→ 해당 위치에서 cra라는 이름과 test라는 태그로 빌드를 수행한다.
+
+![Docker에서 이미지를 실행해 컨테이너에 접속한 모습 (예시)](https://prod-files-secure.s3.us-west-2.amazonaws.com/86439edb-1a61-4cf7-826a-0b7e9b701367/bc4d44a0-b624-4781-8dcb-c9ad237ae48e/Untitled.png)
+
+Docker에서 이미지를 실행해 컨테이너에 접속한 모습 (예시)
+
+애플리케이션이 빌드되는 것이 아니라 실행되기 위해서 다음과 같은 작업을 추가해야 한다.
+
+1. 빌드된 웹 애플리케이션을 NGINX가 서비스할 수 있도록 설정한다.
+2. 이미지를 실행했을 때 해당 웹페이지에 접근할 수 있어야 한다.
+3. 웹페이지 접근에 필요한 빌드 파일만 남겨두고 용량을 최소화한다.
+
+이를 위해 Dockerfile에 다음 내용을 추가한다.
+
+```powershell
+FROM nginx:1.23.2-alpine as start
+
+COPY ./nginx/nginx.conf /etc/nginx/nginx.config
+COPY --from=build /app/build /usr/share/nginx/html
+
+EXPOSE 3000
+
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
+```
+
+1. FROM nginx:1.23.2-alpine as start: 빌드된 정적 파일을 서비스하기 위해 최신 버전의 NGINX가 설치된 알파인 리눅스를 설치한다. (NGINX만 설치된 리눅스라 가볍고 빠르다.)
+2. COPY ./nginx/nginx.conf /etc/nginx/nginx.config: 빌드한 파일을 NGINX가 서비스할 수 잇또록 설정 파일을 복사한다.
+3. COPY --from=build /app/build /usr/share/nginx/html: build 단계에서 /app/build를 가져와서 현재의 start단계의 /usr/share/nginx/html에 복사한다.
+4. EXPOSE 3000: 이미지를 만드는 사람이 해당 이미지를 컨테이너로 실행할 때 어떤 포트가 열려 있는지 알려준다.
+5. ENTRYPOINT ["nginx", "-g", "daemon off;"]: 컨테이너가 시작됐을 때 어떤 명령을 실행할지 결정한다.
+
+![이미지를 실행하는 모습 (예시)](https://prod-files-secure.s3.us-west-2.amazonaws.com/86439edb-1a61-4cf7-826a-0b7e9b701367/3ee98a15-cc74-4bcc-a428-893b6347aea1/Untitled.png)
+
+이미지를 실행하는 모습 (예시)
+
+⇒ Dockerfile에서 명시된 내용을 바탕으로 이미지를 빌드하고, 컨테이너라고 하는 가상화 환경에서 웹 애플리케이션을 제공하는 것. 이 이미지만 있으면 도커를 실행할 수 잇는 모든 환경에서 동일한 애플리케이션을 실행할 수 있다.
+
+### create-next-app을 위한 Dockerfile 작성하기
+
+Next.js도 크게 다르지 않다. 의존성을 설치하고 프로젝트를 빌드하는 과정을 동일하게 수행한다. 한 가지 다른 점은 **서버 실행이 필요하다는 점**.
+
+먼저 프로젝트 루트에 Dockerfile 생성하고 다음과 같이 작성한다. 프로젝트 빌드에 필요한 package.json과 package-lock.json을 설치해서 node_modules 생성.
+
+```tsx
+FROM node:18.12.0-alpine3.16 as build
+
+WORKDIR /app
+
+COPY package.json ./package.json
+COPY package-lock.json ./package-lock.json
+
+RUN npm ci
+```
+
+build 단계에서는 node_modules를 복사해서 사용한다. 그리고 프로젝트를 빌드한다.
+
+```tsx
+FROM node:18.12.0-alpine3.16 as build
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . ./
+
+RUN npm run build
+```
+
+빌드한 이미지를 실행하기 전에 next.config.js에 다음 내용을 추가한다. output은 Next.js에서 빌드를 위해 제공하는 기능으로, 이 옵션이 추가되면 Next.js는 프로덕션에서 실행에 필요한 파일들만 모아서 바로 실행할 수 있는 준비를 대신해준다.
+
+```jsx
+/** @type {import('next').NextConfig} **/
+cosnt nextConfig = {
+	reactStrictMode: true,
+	swcMinify: true,
+	// 이 옵션을 추가
+	output: 'standalone',
+}
+
+module.exports = nextConfig
+```
+
+.next/standalone에 실행에 필요한 프로젝트가 따로 생성되고 server.js도 생성된다.
+
+→ 이를 응요하면, Koa나 Express 같은 웹 프레임워크에 Next.js를 올려두고 실행해 별도의 Node.js 기반 서버를 운영하면서 동시에 Next.js도 서비스 할 수 있다.
+
+마지막으로 runner 단계를 만들어서 standalone으로 만들어진 Next.js를 실행한다.
+
+```tsx
+FROM node:18.12.0-alpine3.16 as runner
+
+COPY --from=build /app/public ./public
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+
+EXPOSE 3000
+
+ENTRYPOINT ["node", "server.js"]
+```
+
+1. FROM node:18.12.0-alpine3.16 as runner: runner 단계로 node:18.12.0-alpine3.16 이미지를 사용
+2. COPY --from=build /app/public ./public: public에 있는 정적 리소스 정보 복사.
+3. COPY --from=build /app/.next/standalone ./: standalone 파일의 내용 복사
+4. COPY --from=build /app/.next/static ./.next/static: static 폴더 정보 복사
+5. EXPOSE 3000: 사용해야할 포트를 EXPOSE로 설정
+6. ENTRYPOINT ["node", "server.js"]: node server.js를 실행해 이미지 실행 시 바로 Next.js가 실행되도록 설정한다.
+
+⇒ 서버 실행 때문에 create-react-app 애플리케이션 대비 크기가 커졌지만 Next.js 애플리케이션을 실행하는 데 필요한 최소한의 것들이 모두 준비되어서 이제 웹 사이트 접근이 가능해졌다.
