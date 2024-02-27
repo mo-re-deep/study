@@ -1,0 +1,360 @@
+# 11.2 리액트 서버 컴포넌트
+
+서버 컴포넌트와 서버 사이드 렌더링은 완전히 다른 개념이다. 이 둘은 서버에서 발생하는 작업이란 것 외에는 공통점이 없다.
+
+## 11.2.1 기존 리액트 컴포넌트 와 서버 사이드 렌더링의 한계
+
+### 1. 자바스크립트 번들 크기가 0인 컴포넌트를 만들 수 없다.
+
+예시로 나온 sanitize-html처럼 기존의 리액트 컴포넌트는 타사 라이브러리를 불가피하게 다운로드 및 실행을 해야만 할 때가 많았다.
+
+→ 서버 컴포넌트의 등장으로 **서버에서는 라이브러리의 실행 결과와 컴포넌트 렌더링 결과물만 클라이언트에 제공**해서 사용자 기기의 부담을 줄여주게 되었다.
+
+### 2. 백엔드 리소스에 대한 직접적인 접근이 불가능하다.
+
+백엔드 데이터의 접근하기 위해 REST API 같은 별도의 방법이 필요했다.
+
+→ 서버 컴포넌트의 등장으로 클라이언트에서 **직접 백엔드에 접근해 원하는 데이터를 가져온다.**
+
+→ 백엔드의 접근할 때 단계가 하나 줄어든다.
+
+```jsx
+import db from 'db'
+
+async function Board({ id }: { id: string }) {
+	const text = await db.board.get(id)
+	return <>{text}</>
+}
+```
+
+(데이터에 직접 액세스하는 모습)
+
+### 3. 자동 코드 분할(code split)이 불가능하다
+
+코드를 작은 단위로 나눠 필요할 때 동적으로 지연 로딩함으로써 앱을 초기화하는 속도를 높였고 이를 일반적으로는 lazy를 사용해 구현하였다. 이는 다음과 같은 단점들이 있다.
+
+- 일일이 lazy로 감싸는 것을 기억해야 한다.
+- 해당 컴포넌트가 호출되고 if 문을 판단하기 전까지 어떤 지연 로딩한 컴포넌트를 불러올지 결정할 수 없다.
+
+→ 이 같은 단점은 **서버 컴포넌트가 서버에서 자동으로 코드 분할을 수행함**으로써 해결된다. (코드 분할을 염두해 둘 필요가 없다.)
+
+### 4. 연쇄적으로 발생하는 클라이언트와 서버의 요청을 대응하기가 어렵다.
+
+이는 최초 컴포넌트의 요청과 렌더링이 끝날 때까지 하위 컴포넌트도 끝나지 않는다는 큰 단점이 있다. 이는 다음과 같은 부가적인 비효율성도 있다.
+
+- 서버에 요청 횟수 증가
+- 하위 컴포넌트들의 서버 요청 지연
+- 렌더링 준비가 되지 않았음을 나타내는 불필요한 렌더링 발생
+
+→ 서버 컴포넌트는, 클라이언트에서 **서버로 요청함으로써 발생하는 지연을 줄이고, 반복적인 요청도 없어지고, 클라이언트에서보다 더 효율적인 렌더링이 가능하게 한다.**
+
+### 5. 추상화에 드는 비용이 증가한다.
+
+리액트는 템플릿 언어로 설계되지 않았다.
+
+**템플릿 언어**: HTML에 특정 언어의 문법을 집어넣어 사용할 수 있는 것. for 문이나 if 문 처리 가능.
+
+```python
+{% for post in posts %}
+<li>
+	<a href="/post/{{ post.id }}" >{{ post.text }}</a>
+</li>
+{% endfor %}
+```
+
+(템플릿 언어 Djnago)
+
+반면에 자바스크립트는 추상화나 함수 사용이 용이하지만 그게 복잡해질수록  코드가 길어지고 런타임 시에는 오버헤드가 발생한다는 단점이 있다.
+
+→ 서버에서 이 같은 복잡한 추상화 작업을 수행하면, 서버에서 전송될 내용을 미리 다 계산해서 내려주게 되고 그만큼 **속도가 빨라진다**. 그리고 전송되는 **결과물 또한 단순하고 가벼워진다**. 코드 추상화에 따른 비용은 서버에서만 지불하면 된다.
+
+### **⇒ 이 모든 문제는 리액트가 클라이언트 중심으로 돌아가기 때문에 발생한다.**
+
+- 서버 사이드 렌더링은 정적 콘텐츠를 빠르게 제공하고, 서버에 있는 데이터에 손쉽게 제공할 수 있다.
+- 클라이언트 사이드 렌더링은 사용자의 인터랙션에 따라 정말 다양한 것들을 제공할 수 있다.
+
+이 두 렌더링 방식의 장점을 모두 취하고자 하는 것이 바로 **리액트 서버 컴포넌트다.**
+
+## 11.2.2 서버 컴포넌트란?
+
+서버가 할 수 있는 일은 서버가 처리하고, 클라이언트가 할 수 있는 일은 클라이언트가 처리하도록 한다. 다만, 클라이언트 컴포넌트는 서버 컴포넌트를 import 할 수 없다.
+
+https://blog.kakaocdn.net/dn/dfT4Lq/btskhbavyDq/OyW9sRKLioyPKYabveeiD1/img.png
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/a03e70e2-9f82-4a7b-b29e-e98f66f3f389/075f89cf-12dd-4cad-a4d1-ac976bd4c2b6/Untitled.png)
+
+리액트 컴포넌트 트리
+
+모든 컴포넌트는 서버 컴포넌트, 클라이언트 컴포넌트, 모두 될 수 있다. 그 비밀은 children으로 자주 사용되는 ReactNode에 있다. 아래 코드들은 서버 컴포넌트 기반의 컴포넌트 트리를 설계한 것이다.
+
+```jsx
+// ClientComponent.jsx
+'use client'
+export default function ClientComponent({children}) {
+  return (
+		<div>
+			<h1>클라이언트 컴포넌트</h1>
+			{children}
+	  </div>
+	)
+}
+```
+
+```jsx
+// ServerComponent.jsx
+export default function ServerComponent() {
+  return <span>서버 컴포넌트</span>
+}
+```
+
+```jsx
+// ParentComponent.jsx
+import ClientComponent from "./ClientComponent";
+import ServerComponent from "./ServerComponent";
+export default function ParentServerComponent() {
+  return (
+		<ClientComponent>
+			<ServerComponent />
+	  </ClientComponent>
+	)
+}
+```
+
+→ 마지막에 ParentServerComponent는 **서버 컴포넌트일 수도 클라이언트 컴포넌트일 수도 있다**. 즉, 두 군데 모두 사용할 수 있다.
+
+### 세 컴포넌트의 차이와 제약사항
+
+- 서버 컴포넌트
+    - 요청이 오면 서버에서 딱 한번 실행되므로 상태를 가질 수 없다. useState, useReducer 사용 X
+    - 렌더링 생명 주기도 사용할 수 없다. useEffect 사용 X
+    - effect나 state에 의존하는 커스텀 훅 사용 X
+    - DOM API를 쓰거나 window, document 등에 접근할 수 없다.
+    - 서버에만 있는 데이터를 async/await으로 접근 가능
+    - 다른 서버 컴포넌트, 클라이언트 컴포넌트 렌더링 가능
+
+- 클라이언트 컴포넌트
+    - 서버 컴포넌트를 불러오거나 서버 전용 훅이나 유틸리티를 불러올 수 없다.
+    - 서버 컴포넌트와 클라이언트 컴포넌트를 중첩해서 갖는 구조로 설계 가능. 즉, 최상위 컴포넌트가 서버 컴포넌트면 가능한 구조.
+    - 위 두 사항을 제외하면 일반 리액트 컴포넌트와 같다. state, effect, 브라우저 API 모두 사용 가능.
+
+- 공용 컴포넌트
+    - 서버와 클라이언트 모두에서 사용할 수 있다. 다만, 위의 제약사항이 모두 적용된다.
+    
+
+리액트는 기본적으로 모든 컴포넌트를 공용 컴포넌트로 판단하고 ‘use client’를 따로 명시해줘야 위에 언급한, 클라이언트 컴포넌트가 서버 컴포넌트를 import 하는 상황에서는 빌드 시 에러가 발생한다.
+
+> 리액트 서버 컴포넌트 여러 가지 제약 요소로 인해 번들러나 특정 프레임워크의 도움을 받는 것이 필수적이다.
+> 
+
+## 11.2.3 서버 사이드 렌더링과 서버 컴포넌트의 차이
+
+서버 사이드 렌더링은 알다시피 단점이 존재한다. 정적인 HTML을 빠르게 내려주는 데 초점을 두는 대신 여전히 초기 HTML 로딩 이후에는 클라이언트에서 JS 코드를 다운받고 파싱하고, 실행하는 데 비용이 든다.
+
+→ 미래에는 서버 컴포넌트도 함께 활용해 서버에서 렌더링할 수 있는 컴포넌트는 서버에서 완성하고, 클라이언트 컴포넌트는 서버 사이드 렌더링으로 초기 HTML을 빠르게 전달받게 할 수 있다.
+
+**즉, 둘은 대체제가 아닌 상호보완하는 개념이 될 수 있다. 다만, 서버 컴포넌트 자체도 베타이기 때문에 향후 어떻게 될지 지켜보면 좋을듯하다.**
+
+## 11.2.4 서버 컴포넌트는 어떻게 작동하는가?
+
+예시 코드 주소)
+
+https://github.com/reactjs/server-components-demo
+
+prisma/server-components-demo를 사용하면 별도의 db 설치 및 설정이 필요 없이 리액트 서버 컴포넌트를 맛볼 수 있다.
+
+1. 서버가 렌더링 요청을 받는다. 서버가 렌더링 과정을 수행해야 하므로 모든 페이지는 항상 서버에서 시작된다. 
+2. 서버는 받은 요청에 따라 컴포넌트를 JSON으로 직렬화한다. 브라우저는 후에 다시 역직렬화한 다음 렌더링을 수행한다. 서버는 와이어 포맷이라는 형태의 데이터를 스트리밍해 클라이언트에 제공한다.
+3. 브라우저가 리액트 컴포넌트 트리를 구성한다. 서버로부터 스트리밍으로 JSON 결과물을 받고 다시 파싱한 결과물을 바탕으로 트리를 재구성해 컴포넌트를 만들어 나간다.
+
+### 리액트 서버 컴포넌트의 작동 방식의 특별한 점
+
+- 서버에서 클라이언트로 정보를 스트리밍 형태로 보내고 이를 줄 단위로 JSON을 읽고 컴포넌트를 렌더링한다. → 빠르게 사용자에게 결과물을 보여준다.
+- 각 컴포넌트 별로 번들링이 별개로 돼 있어 필요에 따라 컴포넌트를 지연하거나 따로 받는 작업 등이 가능하다.
+- SSR과는 다르게 결과물이 HTML이 아닌 JSON 형태로 보내진다. 이는 리액트 컴포넌트 트리의 구성을 최대한 빠르게 할 수 있게 도와준다.
+
+# 11.3 Next.js에서의 리액트 서버 컴포넌트
+
+Next.js도 13버전에서 서버 컴포넌트를 도입했다. 이를 온전히 사용하기 위해서는 번들러와 프레임워크의 도움이 필수다.
+
+### Next.js 13에서 서버 컴포넌트를 사용하기 위한 방법은?
+
+기본적인 서버 컴포넌트의 제약은 동일하다.
+
+다만, Next.js의 루트 컴포넌트는 각 페이지에 존재하는 page.js다. 그리고 layout.js도 마찬가지로 서버 컴포넌트로 작동한다. 둘은 반드시 서버 컴포넌트여야 한다.
+
+```jsx
+import ClientComponent from './ClientComponent'
+import ServerComponent from './ServerComponent'
+
+// 각 페이지는 기본적으로 서버 컴포넌트로 작동한다.
+export default function Page() {
+	return (
+		<ClientComponent>
+			<ServerComponent />
+		</ClientComponent>
+	)
+}
+```
+
+→ 이렇게 하면 클라이언트 컴포넌트 관점에서 서버 컴포넌트는 이미 렌더링된 결과물로 children에 들어갈 것이기 때문에 서버 컴포넌트 구조를 구축하는 데 문제가 없다.
+
+아래 서술할 것들은 Next.js에서 서버 컴포넌트를 도입하면서 달라진 부분들이다.
+
+## 11.3.1 새로운 fetch 도입과 getServerSideProps, getStaticProps, getInitialProps의 삭제
+
+제목과 같이 SSR과 정적 페이지 제공을 위해 이용되던 메소드들이 /app 디렉터리 내부에서는 삭제 됐다. 대신 **모든 데이터 요청은 fetch를 기반으로** 이뤄진다.
+
+- 이제 서버에서 데이터를 직접 불러오거나 비동기적으로 작동하는 것도 가능하다.
+- 추가로, fetch API를 확장해 서버 컴포넌트 트리 내에 동일한 요청이 있다면 재요청을 방지한다. (fetch 요청에 대한 내용을 서버에서는 렌더링이 한 번 끝날 때까지 캐싱해서 방지한다.)
+
+## 11.3.2 정적 렌더링과 동적 렌더링
+
+과거 getStaticProps를 활용해 데이터가 변경되지 않는 경우, 정적으로 페이지를 만들어 제공할 수 있는 기능이 있었다. 이는 해당 주소로 들어오면 모든 결과물이 같기 때문에 데이터 제공이 굉장히 빠르다는 장점이 있다.
+
+- 이제 Next.js 13에서는, 정적인 라우팅은 기본적으로 빌드 타임에 렌더링을 미리 해두고 캐싱해 재사용할 수 있게 해둔다.
+- 동적인 라우팅은 서버에 매번 요청이 올 때마다 컴포넌트를 렌더링하도록 변경했다.
+
+다음은 특정 API 엔드 포인트에서 데이터를 불러와 페이지에서 렌더링하는 구조를 가진 서버 컴포넌트이다. 주소는 정적으로 결정되어 있어 빌드 시에는 주소에 미리 요청해 데이터를 가져온 다음 렌더링한 결과를 빌드에 넣어둔다.
+
+```jsx
+async function fetchData() {
+	const res = await fetch(`https://jsonplaceholder.typicode.com/posts`)
+	const data = await res.json()
+	return data
+}
+
+export default async function Page() {
+	cosnt data: Array<any> = await fetchData()
+
+	return (
+		<ul>
+			{data.map((item, key) => (
+				<li key={key}>{item.id}</li>
+			))}
+		</ul>
+	)
+}
+```
+
+하지만 아래처럼 옵션을 추가하면 정적으로 캐싱하지 않는다. 그럼 요청을 미리 빌드해서 대기 시키지 않아 요청이 올 때마다 fetch 요청 이후에 렌더링을 한다.
+
+```jsx
+async function fetchData() {
+	const res = await fetch(
+		`https://jsonplaceholder.typicode.com/posts`,
+		{ cache: 'no-cache' },  // no-cache 옵션 추가
+	)
+	const data = await res.json()
+	return data
+}
+
+export default async function Page() {
+	cosnt data: Array<any> = await fetchData()
+
+	return (
+		<ul>
+			{data.map((item, key) => (
+				<li key={key}>{item.id}</li>
+			))}
+		</ul>
+	)
+}
+```
+
+그밖에
+
+- Next.js가 제공하는 next/headers, next/cooke 같은 헤더, 쿠키 정보를 불러오는 함수를 사용하면 해당 함수는 동적인 연산으로 인식해 정적 렌더링 대상에서 제외된다.
+- 동적인 주소이지만 특정 주소에 대해 캐싱하고 싶으면? generateStaticParams를 사용한다.
+    
+    ```jsx
+    export async function generateStaticParams() {
+    	return [{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }]
+    }
+    
+    async function fetchData(params: { id: string }) {
+    	const res = await fetch(
+    		`https://jsonplaceholder.typicode.com/posts/${params.id}`,
+    	)
+    	const data = await res.json()
+    	return data
+    }
+    
+    export default async function Page({
+    	params,
+    }: {
+    	params: { id: string }
+    	children?: React.ReactNode
+    }) {
+    	cosnt data = await fetchData(params)
+    
+    	return (
+    		<div>
+    			<h1>{data.title}<h1>
+    		</div>
+    	)
+    }
+    ```
+    
+- fetch 옵션에 따른 작동 방식들
+    - fetch(URL, { cache: ‘force-cache’ }): 기본값으로 getStaticProps와 유사하게 불러온 데이터를 캐싱해 해당 데이터로만 관리한다.
+    - fetch(URL, { cache: ‘no-store’ }), fetch(URL, { next: { revalidate: 0 } }): getServerSideProps와 유사하게 캐싱하지 않고 매번 새로운 데이터를 불러온다.
+    - fetch(URL, { next: { revalidate: 10 } }): getStaticProps에 revalidate를 추가한 것과 동일하며, 정해진 유효시간 동안에는 캐싱하고, 이 유효시간이 지나면 캐시를 파기한다.
+
+## 11.3.3 캐시와 mutating, 그리고 revalidating
+
+Next.js는 fetch의 기본 작동을 재정의해 `{next: {revalidate?: number | false}}`를 제공한다. 이를 바탕으로 해당 데이터의 유효한 시간을 정해두고 이 시간이 지나면 다시 데이터를 불러와서 페이지를 렌더링하는 것이 가능하다.
+
+```jsx
+export const revalidate = 60
+```
+
+위처럼 선언하면 하위 모든 라우팅에서 페이지를 60초 간격으로 갱신해 새로 렌더링한다. 이를 위 예시들처럼 fetch 내부의 옵션으로 제공할 수도 있다.
+
+→ 이런 캐시를 전체적으로 무효화 하고 싶다면? `router.refresh();` 를 사용한다. 이는 브라우저 히스토리에 영향을 미치지 않고, 서버에서 루트부터 데이터를 전체적으로 가져와서 갱신하게 된다.
+
+## 11.3.4 스트리밍을 활용한 점진적인 페이지 불러오기
+
+과거 SSR을 요청받은 페이지를 모두 렌더링해서 내려줄 때까지 아무것도 보여줄 수 없고 사용자는 빈 페이지만 보게 된다. 또 하이드레이션 전까지 인터랙션도 할 수 없다.
+
+이를 해결하기 위해 HTML을 **작은 단위로 쪼개서 완성되는 대로 클라이언트로 점진적으로 보내는 ‘스트리밍**’이 도입됐다. 이는 사용자가 일부라도 페이지와 인터랙션할 수 있게 해준다. 또한 TTFB와 FCP를 개선하는 데 큰 도움이 된다.
+
+TTFB(Time To First Byte)
+
+FCP(First Contentful Paint)
+
+스트리밍을 활용할 수 있는 두 가지 방법
+
+- 경로에 loading.tsx 배치: 렌더링이 완료되기 전에 보여줄 수 있는 컴포넌트를 배치한다. 그럼 자동으로 다음 구조와 같이 Suspense가 배치된다.
+    
+    ```jsx
+    <Layout>
+    	<Header />
+    	<SideNav />
+    	<Suspense fallback={<Loading />}>
+    		<Page />
+    	</Suspense>
+    </Layout>
+    ```
+    
+- Suspense 배치: 좀 더 세분화된 제어를 하고 싶다면 직접 리액트의 Suspense르 배치하는 것도 가능하다.
+    
+    ```jsx
+    import { Suspense } from 'react'
+    import { Notes, Peoples } from './Components'
+    
+    export default function Posts() {
+    	return (
+    		<Section>
+    			<Suspense fallback={<Skeleton />}>
+    				<Notes />
+    			</Suspense>
+    			<Suspense fallback={<Skeleton />}>
+    				<Peoples />
+    			</Suspense>
+    		</Section>
+    	)
+    }
+    ```
+    
+
+Loading은 Suspense를 기반으로 만들어진 Next.js의 규칙이다. 그래서 직접 Suspense를 사용할 수도 있다. 스트리밍을 활용하고, 로딩이 끝난 순서로 하이드레이션을 수행해 가능한 한 사용자에게 빠르게 상호작용이 가능한 페이지를 제공하게 되는 것이다!
